@@ -1,4 +1,10 @@
-use std::{process, time::Instant};
+use std::{
+    fs::{File, OpenOptions},
+    io::{self, Read, Seek, SeekFrom, Write},
+    path::Path,
+    process,
+    time::Instant,
+};
 
 pub const USERNAME_SIZE: usize = 32; // same as varchar(32)
 pub const EMAIL_SIZE: usize = 255; // same as varchar(255)
@@ -36,16 +42,36 @@ pub enum ExecuteError {
 
 pub struct Table {
     pub num_rows: usize,
-    pub pages: Vec<Option<Box<[u8; PAGE_SIZE]>>>,
+    pub pager: Pager,
 }
 
 impl Table {
-    pub fn new() -> Self {
-        let mut pages = Vec::with_capacity(TABLE_MAX_PAGES);
-        for _ in 0..TABLE_MAX_PAGES {
-            pages.push(None);
+    pub fn db_open<P: AsRef<Path>>(filename: P) -> io::Result<Self> {
+        let pager = Pager::open(filename)?;
+        let num_rows = (pager.file_length as usize) / ROW_SIZE;
+
+        Ok(Table { num_rows, pager })
+    }
+
+    pub fn db_close(&mut self) -> io::Result<()> {
+        let num_full_pages = self.num_rows / ROWS_PER_PAGE;
+
+        for i in 0..num_full_pages {
+            if self.pager.pages[i].is_none() {
+                continue;
+            }
+            self.pager.flush(i, PAGE_SIZE)?;
         }
-        Table { num_rows: 0, pages }
+
+        let num_additional_rows = self.num_rows % ROWS_PER_PAGE;
+        if num_additional_rows > 0 {
+            let page_num = num_full_pages;
+            if self.pager.pages[page_num].is_some() {
+                self.pager.flush(page_num, num_additional_rows * ROW_SIZE)?;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -92,6 +118,51 @@ impl Row {
     }
 }
 
+pub struct Pager {
+    pub file: File,
+    pub file_length: u64,
+    pub pages: Vec<Option<Box<[u8; PAGE_SIZE]>>>,
+}
+
+impl Pager {
+    pub fn open<P: AsRef<Path>>(filename: P) -> io::Result<Self> {
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(filename)?;
+
+        let file_length = file.metadata()?.len();
+        let mut pages = Vec::with_capacity(TABLE_MAX_PAGES);
+
+        for _ in 0..TABLE_MAX_PAGES {
+            pages.push(None);
+        }
+
+        Ok(Pager {
+            file,
+            file_length,
+            pages,
+        })
+    }
+
+    pub fn flush(&mut self, page_num: usize, size: usize) -> io::Result<()> {
+        if self.pages[page_num].is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "Tried to flush a null page.",
+            ));
+        }
+
+        let page = self.pages[page_num].as_ref().unwrap();
+        self.file
+            .seek(SeekFrom::Start((page_num * PAGE_SIZE) as u64))?;
+        self.file.write_all(&page[0..size])?;
+        self.file.flush()?;
+        Ok(())
+    }
+}
+
 pub fn handle_input(input: &str, table: &mut Table) -> Option<String> {
     let raw_input = input.trim();
     if raw_input.is_empty() {
@@ -99,7 +170,7 @@ pub fn handle_input(input: &str, table: &mut Table) -> Option<String> {
     }
 
     if raw_input.starts_with('.') {
-        match do_meta_command(raw_input) {
+        match do_meta_command(raw_input, table) {
             Ok(()) => return None,
             Err(MetaCommandError::Unrecognized) => {
                 return Some(format!("Unrecognized command: '{}'", raw_input));
@@ -123,10 +194,14 @@ pub fn handle_input(input: &str, table: &mut Table) -> Option<String> {
     }
 }
 
-fn do_meta_command(input: &str) -> Result<(), MetaCommandError> {
+fn do_meta_command(input: &str, table: &mut Table) -> Result<(), MetaCommandError> {
     match input {
         ".exit" => {
             println!("Exiting.");
+            if let Err(e) = table.db_close() {
+                println!("Error flushing database cache to disk: {}", e);
+                process::exit(1);
+            }
             process::exit(0);
         }
         _ => Err(MetaCommandError::Unrecognized),
@@ -212,25 +287,57 @@ pub fn print_prompt() {
     print!("db > ");
 }
 
-fn get_row_mut_slice(table: &mut Table, row_num: usize) -> &mut [u8] {
-    let page_num = row_num / ROWS_PER_PAGE;
-
-    if table.pages[page_num].is_none() {
-        table.pages[page_num] = Some(Box::new([0u8; PAGE_SIZE]));
+pub fn get_page(pager: &mut Pager, page_num: usize) -> &mut [u8; PAGE_SIZE] {
+    if page_num >= TABLE_MAX_PAGES {
+        println!(
+            "Tried to fetch page number out of bounds: {} >= {}",
+            page_num, TABLE_MAX_PAGES
+        );
+        process::exit(1);
     }
 
-    let page = table.pages[page_num].as_mut().unwrap();
+    if pager.pages[page_num].is_none() {
+        let mut page_data = Box::new([0u8; PAGE_SIZE]);
+        let mut num_pages = pager.file_length / (PAGE_SIZE as u64);
+
+        if pager.file_length % (PAGE_SIZE as u64) != 0 {
+            num_pages += 1;
+        }
+
+        if (page_num as u64) < num_pages {
+            pager
+                .file
+                .seek(SeekFrom::Start((page_num * PAGE_SIZE) as u64))
+                .unwrap();
+            let mut bytes_read = 0;
+            while bytes_read < PAGE_SIZE {
+                match pager.file.read(&mut page_data[bytes_read..]) {
+                    Ok(0) => break,
+                    Ok(n) => bytes_read += n,
+                    Err(e) => {
+                        println!("Error reading database file: {}", e);
+                        process::exit(1);
+                    }
+                }
+            }
+        }
+        pager.pages[page_num] = Some(page_data);
+    }
+    pager.pages[page_num].as_mut().unwrap()
+}
+
+fn get_row_mut_slice(table: &mut Table, row_num: usize) -> &mut [u8] {
+    let page_num = row_num / ROWS_PER_PAGE;
+    let page = get_page(&mut table.pager, page_num);
     let row_offset = row_num % ROWS_PER_PAGE;
     let byte_offset = row_offset * ROW_SIZE;
 
     &mut page[byte_offset..byte_offset + ROW_SIZE]
 }
 
-pub fn get_row_slice(table: &Table, row_num: usize) -> &[u8] {
+pub fn get_row_slice(table: &mut Table, row_num: usize) -> &[u8] {
     let page_num = row_num / ROWS_PER_PAGE;
-    let page = table.pages[page_num]
-        .as_ref()
-        .expect("Attempted to read unallocated page slot");
+    let page = get_page(&mut table.pager, page_num);
 
     let row_offset = row_num % ROWS_PER_PAGE;
     let byte_offset = row_offset * ROW_SIZE;
