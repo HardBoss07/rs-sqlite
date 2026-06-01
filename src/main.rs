@@ -30,6 +30,8 @@ enum MetaCommandError {
 enum ParseError {
     UnrecognizedStatement,
     SyntaxError,
+    NegativeId,
+    StringTooLong,
 }
 
 enum ExecuteError {
@@ -139,6 +141,12 @@ fn main() {
                     Err(ParseError::SyntaxError) => {
                         println!("Syntax error. Could not parse statement.");
                     }
+                    Err(ParseError::NegativeId) => {
+                        println!("ID must be positive.");
+                    }
+                    Err(ParseError::StringTooLong) => {
+                        println!("Unrecognized keyword at start of '{}'.", raw_input);
+                    }
                 }
             }
             Err(error) => {
@@ -168,13 +176,21 @@ fn prepare_statement(input: &str) -> Result<Statement, ParseError> {
                 return Err(ParseError::SyntaxError);
             }
 
-            let id: u32 = match parts[1].parse() {
+            let id_str = parts[1];
+            let username_str = parts[2];
+            let email_str = parts[3];
+
+            if id_str.starts_with('-') {
+                return Err(ParseError::NegativeId);
+            }
+
+            let id: u32 = match id_str.parse() {
                 Ok(val) => val,
                 Err(_) => return Err(ParseError::SyntaxError),
             };
 
-            if parts[2].len() > USERNAME_SIZE || parts[3].len() > EMAIL_SIZE {
-                return Err(ParseError::SyntaxError);
+            if username_str.len() > USERNAME_SIZE || email_str.len() > EMAIL_SIZE {
+                return Err(ParseError::StringTooLong);
             }
 
             let mut username = [0u8; USERNAME_SIZE];
