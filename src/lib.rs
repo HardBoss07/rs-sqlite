@@ -1,7 +1,4 @@
-use std::{
-    process,
-    time::Instant,
-};
+use std::{process, time::Instant};
 
 pub const USERNAME_SIZE: usize = 32; // same as varchar(32)
 pub const EMAIL_SIZE: usize = 255; // same as varchar(255)
@@ -38,8 +35,8 @@ pub enum ExecuteError {
 }
 
 pub struct Table {
-    num_rows: usize,
-    pages: Vec<Option<Box<[u8; PAGE_SIZE]>>>,
+    pub num_rows: usize,
+    pub pages: Vec<Option<Box<[u8; PAGE_SIZE]>>>,
 }
 
 impl Table {
@@ -54,19 +51,19 @@ impl Table {
 
 #[derive(Debug, Clone)]
 pub struct Row {
-    id: u32,
-    username: [u8; USERNAME_SIZE],
-    email: [u8; EMAIL_SIZE],
+    pub id: u32,
+    pub username: [u8; USERNAME_SIZE],
+    pub email: [u8; EMAIL_SIZE],
 }
 
 impl Row {
-    fn serialize(&self, destination: &mut [u8]) {
+    pub fn serialize(&self, destination: &mut [u8]) {
         destination[ID_OFFSET..USERNAME_OFFSET].copy_from_slice(&self.id.to_ne_bytes());
         destination[USERNAME_OFFSET..EMAIL_OFFSET].copy_from_slice(&self.username);
         destination[EMAIL_OFFSET..ROW_SIZE].copy_from_slice(&self.email);
     }
 
-    fn deserialize(source: &[u8]) -> Self {
+    pub fn deserialize(source: &[u8]) -> Self {
         let mut id_bytes = [0u8; 4];
         id_bytes.copy_from_slice(&source[ID_OFFSET..USERNAME_OFFSET]);
         let id = u32::from_ne_bytes(id_bytes);
