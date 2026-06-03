@@ -1,6 +1,8 @@
 use rs_sqlite::{
     components::{cursor::Cursor, row::Row, table::Table},
+    consts::LEAF_NODE_MAX_CELLS,
     handle_input,
+    util::{get_page, leaf_node_num_cells},
 };
 use std::fs;
 
@@ -17,7 +19,9 @@ fn test_insert_and_retrieve_row() {
 
     let res = handle_input("insert 1 user1 user1@email.com", &mut table);
     assert_eq!(res, None);
-    assert_eq!(table.num_rows, 1);
+
+    let root_page = get_page(&mut table.pager, table.root_page_num);
+    assert_eq!(leaf_node_num_cells(root_page), 1);
 
     let mut cursor = Cursor::table_start(&mut table);
     let slice = cursor.value();
@@ -42,7 +46,9 @@ fn test_keeps_data_after_closing_connection() {
 
     {
         let mut table = Table::db_open(db_path).unwrap();
-        assert_eq!(table.num_rows, 1);
+
+        let root_page = get_page(&mut table.pager, table.root_page_num);
+        assert_eq!(leaf_node_num_cells(root_page), 1);
 
         let mut cursor = Cursor::table_start(&mut table);
         let slice = cursor.value();
@@ -59,13 +65,18 @@ fn test_table_full_error() {
     let db_path = "test_full.db";
     let mut table = setup_clean_db(db_path);
 
-    for i in 1..=1400 {
+    for i in 1..=LEAF_NODE_MAX_CELLS {
         let input = format!("insert {} user{} user{}@email.com", i, i, i);
         assert_eq!(handle_input(&input, &mut table), None);
     }
 
-    let overflow = "insert 1401 user1401 user1401@email.com";
-    let res = handle_input(overflow, &mut table);
+    let overflow = format!(
+        "insert {} user{} user{}@email.com",
+        LEAF_NODE_MAX_CELLS + 1,
+        LEAF_NODE_MAX_CELLS + 1,
+        LEAF_NODE_MAX_CELLS + 1
+    );
+    let res = handle_input(&overflow, &mut table);
     assert_eq!(res, Some("Error: Table full.".to_string()));
 
     let _ = table.db_close();
