@@ -1,4 +1,4 @@
-use rs_sqlite::{Row, Table, get_row_slice, handle_input};
+use rs_sqlite::{Cursor, Row, Table, handle_input};
 use std::fs;
 
 // Helper to guarantee an isolated, clean database environment per test execution
@@ -16,7 +16,8 @@ fn test_insert_and_retrieve_row() {
     assert_eq!(res, None);
     assert_eq!(table.num_rows, 1);
 
-    let slice = get_row_slice(&mut table, 0);
+    let mut cursor = Cursor::table_start(&mut table);
+    let slice = cursor.value();
     let row = Row::deserialize(slice);
     assert_eq!(row.id, 1);
 
@@ -40,7 +41,8 @@ fn test_keeps_data_after_closing_connection() {
         let mut table = Table::db_open(db_path).unwrap();
         assert_eq!(table.num_rows, 1);
 
-        let slice = get_row_slice(&mut table, 0);
+        let mut cursor = Cursor::table_start(&mut table);
+        let slice = cursor.value();
         let row = Row::deserialize(slice);
         assert_eq!(row.id, 1);
         let _ = table.db_close();
