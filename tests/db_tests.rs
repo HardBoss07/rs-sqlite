@@ -1,4 +1,7 @@
-use rs_sqlite::{Cursor, Row, Table, handle_input};
+use rs_sqlite::{
+    components::{cursor::Cursor, row::Row, table::Table},
+    handle_input,
+};
 use std::fs;
 
 // Helper to guarantee an isolated, clean database environment per test execution

@@ -1,7 +1,8 @@
-use rs_sqlite::{Table, handle_input, print_prompt};
+use rs_sqlite::{components::table::Table, handle_input, util::print_prompt};
 use std::env;
 use std::io::{self, Write};
 use std::process;
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
