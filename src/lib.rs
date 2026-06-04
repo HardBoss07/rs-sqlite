@@ -3,7 +3,7 @@ pub mod consts;
 pub mod errors;
 pub mod util;
 
-use components::{cursor::*, pager::*, row::*, table::*};
+use components::{pager::*, row::*, table::*};
 use consts::*;
 use errors::*;
 use util::*;
@@ -49,26 +49,3 @@ pub fn handle_input(input: &str, table: &mut Table) -> Option<String> {
         }
     }
 }
-
-/*
-This part is now obsolete since we abstracted away the manual row slice extraction
-
-fn get_row_mut_slice(table: &mut Table, row_num: usize) -> &mut [u8] {
-    let page_num = row_num / ROWS_PER_PAGE;
-    let page = get_page(&mut table.pager, page_num);
-    let row_offset = row_num % ROWS_PER_PAGE;
-    let byte_offset = row_offset * ROW_SIZE;
-
-    &mut page[byte_offset..byte_offset + ROW_SIZE]
-}
-
-pub fn get_row_slice(table: &mut Table, row_num: usize) -> &[u8] {
-    let page_num = row_num / ROWS_PER_PAGE;
-    let page = get_page(&mut table.pager, page_num);
-
-    let row_offset = row_num % ROWS_PER_PAGE;
-    let byte_offset = row_offset * ROW_SIZE;
-
-    &page[byte_offset..byte_offset + ROW_SIZE]
-}
-*/
