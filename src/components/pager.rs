@@ -2,13 +2,15 @@ use std::{
     fs::{File, OpenOptions},
     io::{self, Seek, SeekFrom, Write},
     path::Path,
+    process,
 };
 
-use crate::{PAGE_SIZE, TABLE_MAX_PAGES};
+use crate::consts::{PAGE_SIZE, TABLE_MAX_PAGES};
 
 pub struct Pager {
     pub file: File,
     pub file_length: u64,
+    pub num_pages: usize, // 👈 Added
     pub pages: Vec<Option<Box<[u8; PAGE_SIZE]>>>,
 }
 
@@ -21,6 +23,13 @@ impl Pager {
             .open(filename)?;
 
         let file_length = file.metadata()?.len();
+        let num_pages = (file_length as usize) / PAGE_SIZE; // 👈 Added
+
+        if file_length % (PAGE_SIZE as u64) != 0 {
+            println!("Db file is not a whole number of pages. Corrupt file.");
+            process::exit(1);
+        }
+
         let mut pages = Vec::with_capacity(TABLE_MAX_PAGES);
 
         for _ in 0..TABLE_MAX_PAGES {
@@ -30,6 +39,7 @@ impl Pager {
         Ok(Pager {
             file,
             file_length,
+            num_pages,
             pages,
         })
     }
