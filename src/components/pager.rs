@@ -10,7 +10,7 @@ use crate::consts::{PAGE_SIZE, TABLE_MAX_PAGES};
 pub struct Pager {
     pub file: File,
     pub file_length: u64,
-    pub num_pages: usize, // 👈 Added
+    pub num_pages: usize,
     pub pages: Vec<Option<Box<[u8; PAGE_SIZE]>>>,
 }
 

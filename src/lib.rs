@@ -3,10 +3,9 @@ pub mod consts;
 pub mod errors;
 pub mod util;
 
-use components::{pager::*, row::*, table::*};
-use consts::*;
-use errors::*;
-use util::*;
+use components::{pager::Pager, row::Row, table::Table};
+use errors::{ExecuteError, MetaCommandError, ParseError};
+use util::{do_meta_command, execute_statement, prepare_statement};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum NodeType {

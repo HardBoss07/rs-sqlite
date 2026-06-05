@@ -7,7 +7,12 @@ use std::{
 use crate::{
     NodeType, Pager, Statement,
     components::{cursor::Cursor, row::Row, table::Table},
-    consts::*,
+    consts::{
+        COMMON_NODE_HEADER_SIZE, EMAIL_SIZE, IS_ROOT_OFFSET, LEAF_NODE_CELL_SIZE,
+        LEAF_NODE_HEADER_SIZE, LEAF_NODE_KEY_SIZE, LEAF_NODE_MAX_CELLS, LEAF_NODE_NUM_CELLS_OFFSET,
+        LEAF_NODE_SPACE_FOR_CELLS, LEAF_NODE_VALUE_SIZE, NODE_TYPE_OFFSET, PAGE_SIZE, ROW_SIZE,
+        TABLE_MAX_PAGES, USERNAME_SIZE,
+    },
     errors::{ExecuteError, MetaCommandError, ParseError},
 };
 

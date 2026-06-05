@@ -1,4 +1,6 @@
-use crate::{EMAIL_OFFSET, EMAIL_SIZE, ID_OFFSET, ROW_SIZE, USERNAME_OFFSET, USERNAME_SIZE};
+use crate::consts::{
+    EMAIL_OFFSET, EMAIL_SIZE, ID_OFFSET, ROW_SIZE, USERNAME_OFFSET, USERNAME_SIZE,
+};
 
 #[derive(Debug, Clone)]
 pub struct Row {
