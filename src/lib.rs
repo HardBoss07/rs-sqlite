@@ -37,6 +37,7 @@ pub fn handle_input(input: &str, table: &mut Table) -> Option<String> {
         Ok(statement) => match execute_statement(statement, table) {
             Ok(()) => None,
             Err(ExecuteError::TableFull) => Some("Error: Table full.".to_string()),
+            Err(ExecuteError::DuplicateKey) => Some("Error: Duplicate key.".to_string()),
         },
         Err(ParseError::NegativeId) => Some("ID must be positive.".to_string()),
         Err(ParseError::StringTooLong) => Some("String is too long.".to_string()),

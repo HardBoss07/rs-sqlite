@@ -11,4 +11,5 @@ pub enum ParseError {
 
 pub enum ExecuteError {
     TableFull,
+    DuplicateKey,
 }

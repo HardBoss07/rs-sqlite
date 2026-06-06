@@ -16,6 +16,17 @@ use crate::{
     errors::{ExecuteError, MetaCommandError, ParseError},
 };
 
+pub fn get_node_type(node: &[u8; PAGE_SIZE]) -> NodeType {
+    match node[NODE_TYPE_OFFSET] {
+        0 => NodeType::Internal,
+        1 => NodeType::Leaf,
+        _ => {
+            println!("Unknown node type detected.");
+            process::exit(1);
+        }
+    }
+}
+
 pub fn leaf_node_num_cells(node: &[u8; PAGE_SIZE]) -> u32 {
     let mut bytes = [0u8; 4];
     bytes.copy_from_slice(&node[LEAF_NODE_NUM_CELLS_OFFSET..LEAF_NODE_NUM_CELLS_OFFSET + 4]);
@@ -60,7 +71,7 @@ pub fn leaf_node_insert(cursor: &mut Cursor, key: u32, value: &Row) {
     let num_cells_idx = num_cells as usize;
 
     if cell_num < num_cells_idx {
-        let src_start = LEAF_NODE_HEADER_SIZE + (cell_num + LEAF_NODE_CELL_SIZE);
+        let src_start = LEAF_NODE_HEADER_SIZE + (cell_num * LEAF_NODE_CELL_SIZE);
         let src_end = LEAF_NODE_HEADER_SIZE + (num_cells_idx * LEAF_NODE_CELL_SIZE);
         let dest_start = src_start + LEAF_NODE_CELL_SIZE;
         page.copy_within(src_start..src_end, dest_start);
@@ -70,6 +81,58 @@ pub fn leaf_node_insert(cursor: &mut Cursor, key: u32, value: &Row) {
 
     leaf_node_key_mut(page, cell_num).copy_from_slice(&key.to_le_bytes());
     value.serialize(leaf_node_value_mut(page, cell_num));
+}
+
+pub fn table_find<'a>(table: &'a mut Table, key: u32) -> Cursor<'a> {
+    let root_page_num = table.root_page_num;
+    let root_node = get_page(&mut table.pager, root_page_num);
+
+    match get_node_type(root_node) {
+        NodeType::Leaf => leaf_node_find(table, root_page_num, key),
+        NodeType::Internal => {
+            println!("Need to implement searching an internal node.");
+            process::exit(1);
+        }
+    }
+}
+
+pub fn leaf_node_find<'a>(table: &'a mut Table, page_num: usize, key: u32) -> Cursor<'a> {
+    let node = get_page(&mut table.pager, page_num);
+    let num_cells = leaf_node_num_cells(node) as usize;
+
+    let mut min_idx = 0;
+    let mut one_past_max_idx = num_cells;
+
+    while min_idx != one_past_max_idx {
+        let idx = (min_idx + one_past_max_idx) / 2;
+
+        let start = LEAF_NODE_HEADER_SIZE + (idx * LEAF_NODE_CELL_SIZE);
+        let mut key_bytes = [0u8; 4];
+        key_bytes.copy_from_slice(&node[start..start + 4]);
+        let key_at_idx = u32::from_le_bytes(key_bytes);
+
+        if key == key_at_idx {
+            return Cursor {
+                table,
+                page_num,
+                cell_num: idx,
+                end_of_table: false,
+            };
+        }
+
+        if key < key_at_idx {
+            one_past_max_idx = idx;
+        } else {
+            min_idx = idx + 1;
+        }
+    }
+
+    Cursor {
+        table,
+        page_num,
+        cell_num: min_idx,
+        end_of_table: min_idx >= num_cells,
+    }
 }
 
 pub fn print_constants() {
@@ -165,7 +228,21 @@ pub fn execute_statement(statement: Statement, table: &mut Table) -> Result<(), 
                 return Err(ExecuteError::TableFull);
             }
 
-            let mut cursor = Cursor::table_end(table);
+            let key_to_insert = row_to_insert.id;
+            let mut cursor = table_find(table, key_to_insert);
+
+            if cursor.cell_num < num_cells as usize {
+                let page = get_page(&mut cursor.table.pager, cursor.page_num);
+                let start = LEAF_NODE_HEADER_SIZE + (cursor.cell_num * LEAF_NODE_CELL_SIZE);
+                let mut key_bytes = [0u8; 4];
+                key_bytes.copy_from_slice(&page[start..start + 4]);
+                let key_at_index = u32::from_le_bytes(key_bytes);
+
+                if key_at_index == key_to_insert {
+                    return Err(ExecuteError::DuplicateKey);
+                }
+            }
+
             leaf_node_insert(&mut cursor, row_to_insert.id, &row_to_insert);
         }
         Statement::Select => {
@@ -216,17 +293,19 @@ pub fn get_page(pager: &mut Pager, page_num: usize) -> &mut [u8; PAGE_SIZE] {
                     Ok(0) => break,
                     Ok(n) => bytes_read += n,
                     Err(e) => {
-                        println!("Error reading database file: {}", e);
+                        println!("Error reading file: {}", e);
                         process::exit(1);
                     }
                 }
             }
         }
+
         pager.pages[page_num] = Some(page_data);
 
         if page_num >= pager.num_pages {
             pager.num_pages = page_num + 1;
         }
     }
-    pager.pages[page_num].as_mut().unwrap()
+
+    pager.pages[page_num].as_mut().unwrap().as_mut()
 }
